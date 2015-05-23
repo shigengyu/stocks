@@ -4,6 +4,7 @@ Created on 23 May 2015
 @author: Univer
 '''
 
+import sys
 import os
 import http.client
 import unittest
@@ -55,7 +56,15 @@ class QuoteFetcher(object):
                 self.fetch(symbol)
             else:
                 QuoteFetcher.logger.warn("Failed to find symbol with pattern %s" % stock)
-        
+
+
+if __name__ == "__main__":
+    if sys.argv[1] == None:
+        exit()
+
+    quote_fetcher = QuoteFetcher(sys.argv[1])
+    quote_fetcher.fetch_all()
+
 class QuoteFetcherTest(unittest.TestCase):
     
     def test_fetch(self):
