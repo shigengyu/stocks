@@ -4,22 +4,18 @@ Created on 23 May 2015
 @author: Univer
 '''
 
-import sys
-import http.client
 import os
+import http.client
 import unittest
 import tempfile
-import logging
+from common.Logger import Logger
 from symbols.Symbols import Symbols
 
 class QuoteFetcher(object):
     '''
     classdocs
     '''
-    logger = logging.getLogger("QuoteFetcher")
-    handler = logging.StreamHandler(sys.stdout)
-    logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG)
+    logger = Logger.get_logger(__name__)
 
     def __init__(self, folder):
         '''
@@ -43,11 +39,13 @@ class QuoteFetcher(object):
                 text_file = open(file_name, "w")
                 text_file.write(response_body)
                 QuoteFetcher.logger.info("Quotes for %s saved to file %s" % (symbol, file_name))
+                return file_name
             finally:
                 if not text_file == None:
                     text_file.close()
         else:
             QuoteFetcher.logger.warn("Ignoring invalid quote response on symbol %s" % symbol)
+            return None
 
     def fetch_all(self):
         for stock in Symbols.fetch_stock_list():
@@ -63,8 +61,7 @@ class QuoteFetcherTest(unittest.TestCase):
     def test_fetch(self):
         symbol = "600399.SS"
         fetcher = QuoteFetcher(tempfile.gettempdir() + os.path.sep + "quotes")
-        fetcher.fetch(symbol)
-  
-    def test_fetch_all(self):
-        fetcher = QuoteFetcher(tempfile.gettempdir() + os.path.sep + "quotes")
-        fetcher.fetch_all()
+        file_name = fetcher.fetch(symbol)
+        assert file_name != None
+        assert os.path.exists(file_name)
+        os.remove(file_name)

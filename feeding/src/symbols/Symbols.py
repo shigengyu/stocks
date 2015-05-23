@@ -4,22 +4,18 @@ Created on 23 May 2015
 @author: Univer
 '''
 
-import sys
 import http.client
 import unittest
 import json
 import re
-import logging
+from common.Logger import Logger
 
 class Symbols(object):
     
     '''
     classdocs
     '''
-    logger = logging.getLogger("Symbols")
-    handler = logging.StreamHandler(sys.stdout)
-    logger.addHandler(handler)
-    logger.setLevel(logging.DEBUG)
+    logger = Logger.get_logger(__name__)
 
     def __init__(self):
         '''
