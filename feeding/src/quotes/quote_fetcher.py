@@ -50,11 +50,16 @@ class QuoteFetcher(object):
     def fetch_all(self):
         for stock in Symbols.fetch_stock_list():
             QuoteFetcher.logger.info("Searching symbol with pattern %s" % stock)
-            symbols = Symbols.search(stock)
-            if len(symbols) > 0:
-                for symbol in symbols:
-                    self.fetch(symbol)
-            else:
+            'symbols = Symbols.search(stock)'
+            symbols = [ stock + ".SS", stock + ".SH", stock + ".SZ" ]
+            
+            success = False            
+            for symbol in symbols:
+                if self.fetch(symbol) != None:
+                    success = True
+                    break
+
+            if not success:
                 QuoteFetcher.logger.warn("Failed to find symbol with pattern %s" % stock)
 
 
