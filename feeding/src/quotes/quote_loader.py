@@ -46,17 +46,7 @@ class QuoteLoader(object):
         cql = "insert into eod_quotes (symbol, date, open, high, low, close, volume, adj_close) values ('%s', '%s', %.2f, %.2f, %.2f, %.2f, %d, %.2f)" \
             % (eod_quote.symbol, eod_quote.date.strftime("%Y-%m-%d"), eod_quote.open, eod_quote.high, eod_quote.low, eod_quote.close, eod_quote.volume, eod_quote.adj_close)
         self.session.execute(cql)
-        
 
-if __name__ == "__main__":
-    quote_loader = QuoteLoader()
-    try:
-        quote_loader.connect()
-        file_name = sys.argv[1]
-        eod_quote = QuoteLoader.load_from_file(file_name)
-        quote_loader.insert_eod_quote(eod_quote)
-    finally:
-        quote_loader.disconnect()
 
 class QuoteLoaderTests(unittest.TestCase):
     

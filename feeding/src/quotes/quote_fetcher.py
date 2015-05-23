@@ -58,13 +58,6 @@ class QuoteFetcher(object):
                 QuoteFetcher.logger.warn("Failed to find symbol with pattern %s" % stock)
 
 
-if __name__ == "__main__":
-    if sys.argv[1] == None:
-        exit()
-
-    quote_fetcher = QuoteFetcher(sys.argv[1])
-    quote_fetcher.fetch_all()
-
 class QuoteFetcherTest(unittest.TestCase):
     
     def test_fetch(self):
