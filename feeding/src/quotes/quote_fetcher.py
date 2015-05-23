@@ -4,7 +4,6 @@ Created on 23 May 2015
 @author: Univer
 '''
 
-import sys
 import os
 import http.client
 import unittest

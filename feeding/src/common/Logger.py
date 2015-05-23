@@ -22,7 +22,7 @@ class Logger(object):
     def get_logger(name):        
         logger = logging.getLogger(name)
         handler = logging.StreamHandler(sys.stdout)
-        formatter = logging.Formatter('%(asctime)s %(levelname)5s %(name)s - %(message)s')
+        formatter = logging.Formatter('%(asctime)s %(levelname)8s %(name)s - %(message)s')
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         logger.setLevel(logging.DEBUG)
