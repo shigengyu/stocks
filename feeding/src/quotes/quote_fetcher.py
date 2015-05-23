@@ -9,7 +9,7 @@ import http.client
 import unittest
 import tempfile
 from common.Logger import Logger
-from symbols.Symbols import Symbols
+from symbols.symbols import Symbols
 
 class QuoteFetcher(object):
     '''
