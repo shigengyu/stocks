@@ -8,7 +8,8 @@ import http.client
 import unittest
 import json
 import re
-from common.Logger import Logger
+import collections
+from common.logging import Logger
 
 class Symbols(object):
     
@@ -16,6 +17,7 @@ class Symbols(object):
     classdocs
     '''
     logger = Logger.get_logger(__name__)
+    CtxStock = collections.namedtuple("CtxStock", ["symbol", "name"], verbose = False)
 
     def __init__(self):
         '''
@@ -23,7 +25,7 @@ class Symbols(object):
         '''
     
     @staticmethod
-    def fetch_stock_list():
+    def fetch_all_ctx_stocks():
         try:
             Symbols.logger.info("Creating connection to ctxalgo.com ...")
             conn = http.client.HTTPConnection("ctxalgo.com", timeout = 5000)
@@ -32,10 +34,10 @@ class Symbols(object):
             response = conn.getresponse().read().decode("utf-8")
             Symbols.logger.debug("Response size is %d bytes" % len(response))
             
-            lines = json.loads(response)
             stocks = []
-            for item in lines:
-                stocks.append(item[2:])
+            loaded_json = json.loads(response)
+            for symbol in loaded_json:
+                stocks.append(Symbols.CtxStock(symbol, loaded_json[symbol]))
             return stocks
         except:
             return []
@@ -85,11 +87,12 @@ class Symbols(object):
         except:
             return []
 
+
 class SymbolsTests(unittest.TestCase):
     
-    def test_fetch_list(self):
-        result = Symbols.fetch_stock_list()
-        Symbols.logger.info("%d stocks returned" % len(result))
+    def test_fetch_all_ctx_stocks(self):
+        result = Symbols.fetch_all_ctx_stocks()
+        Symbols.logger.info("%d stocks returned from CoreTX" % len(result))
         assert len(result) > 0
      
     def test_search_from_yahoo(self):

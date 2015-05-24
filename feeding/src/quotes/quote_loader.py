@@ -4,12 +4,11 @@ Created on 23 May 2015
 @author: Univer
 '''
 
-import sys
 import os
 import unittest
-from quotes.quote import EodQuote
+from quotes.quote import CtxEodQuote, YahooEodQuote
 from cassandra.cluster import Cluster
-from common.Logger import Logger
+from common.logging import Logger
 
 class QuoteLoader(object):
     '''
@@ -31,7 +30,7 @@ class QuoteLoader(object):
         eod_quotes = []
         for line in quote_file:
             if not line.startswith("Date"):
-                quote = EodQuote.from_line(symbol, line)
+                quote = YahooEodQuote.from_line(symbol, line)
                 eod_quotes.append(quote)
         return eod_quotes
     
