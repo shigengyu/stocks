@@ -35,16 +35,26 @@ class QuoteFeeder(object):
     def download_quotes(self, symbol, skip_existing):
         return None
 
-    def fetch(self, symbol, skip_existing = False):
-        QuoteFeeder.logger.info("Fetching quotes for symbol %s ..." % symbol)
-        is_downloaded = self.download_quotes(symbol, skip_existing)
-        return is_downloaded
+    def fetch(self, symbol, skip_existing = True):
+        QuoteFeeder.logger.debug("Fetching quotes for symbol %s ..." % symbol)
+        file_name = self.get_file_name_by_symbol(symbol)
+        
+        if skip_existing and os.path.exists(file_name):
+            QuoteFeeder.logger.info("Quotes for %s already exists in %s" % (symbol, file_name))
+        else:
+            file_name = self.download_quotes(symbol, skip_existing)
+            if file_name != None:
+                QuoteFeeder.logger.info("Quotes for %s saved to file %s" % (symbol, file_name))
+            else:
+                QuoteFeeder.logger.warning("Failed to fetch quotes for %s" % symbol)
+
+        return file_name
 
 
 class YahooQuoteFeeder(QuoteFeeder):
     
     def __init__(self, folder):
-        super().__init__(folder)
+        super().__init__(os.path.join(folder, "yahoo"))
     
     def download_quotes(self, symbol, skip_existing):
         conn = http.client.HTTPConnection("ichart.finance.yahoo.com")
@@ -53,28 +63,22 @@ class YahooQuoteFeeder(QuoteFeeder):
         
         file_name = self.get_file_name_by_symbol(symbol)
         
-        if skip_existing and os.path.exists(file_name):
-            QuoteFeeder.logger.info("Quotes for %s already exists in %s" % (symbol, file_name))
-            return file_name
-        
         'Save response to file if valid (starts with "Date")'
         if response_body.startswith("Date"):
             try:
                 text_file = open(file_name, "w")
                 text_file.write(response_body)
-                QuoteFeeder.logger.info("Quotes for %s saved to file %s" % (symbol, file_name))
                 return file_name
             finally:
                 if not text_file == None:
                     text_file.close()
         else:
-            YahooQuoteFeeder.logger.warn("Ignoring invalid quote response on symbol %s" % symbol)
+            QuoteFeeder.logger.warning("Ignoring invalid quote response on symbol %s" % symbol)
             return None
 
-    def fetch_all(self):
-        
-        cassandra_session = CassandraSession()
-        
+
+    def fetch_all(self):        
+        cassandra_session = CassandraSession()        
         try:
             cassandra_session.connect()
             
@@ -93,10 +97,10 @@ class YahooQuoteFeeder(QuoteFeeder):
                         break
     
                 if matched_yahoo_symbol != None:
-                    YahooQuoteFeeder.logger.info("[%s] -> [%s]" % (ctx_stock.symbol, matched_yahoo_symbol))
+                    QuoteFeeder.logger.info("[%s] -> [%s]" % (ctx_stock.symbol, matched_yahoo_symbol))
                     self.insert_symbol_mapping(cassandra_session, ctx_stock.symbol, matched_yahoo_symbol, ctx_stock.name, ctx_stock.symbol[2:])
                 else:
-                    YahooQuoteFeeder.logger.info("[%s] not found in Yahoo" % ctx_stock.symbol)
+                    QuoteFeeder.logger.info("[%s] not found in Yahoo" % ctx_stock.symbol)
         finally:
             cassandra_session.disconnect()
 
@@ -108,7 +112,7 @@ class YahooQuoteFeeder(QuoteFeeder):
 class CtxQuoteFeeder(QuoteFeeder):
     
     def __init__(self, folder):
-        super().__init__(folder)
+        super().__init__(os.path.join(folder, "ctx"))
 
     def download_quotes(self, symbol, skip_existing):
         conn = http.client.HTTPConnection("ctxalgo.com")
@@ -124,18 +128,21 @@ class CtxQuoteFeeder(QuoteFeeder):
         try:
             text_file = open(file_name, "w")
             text_file.write(response_body)
-            QuoteFeeder.logger.info("Quotes for %s saved to file %s" % (symbol, file_name))
             return file_name
         finally:
             if text_file != None:
                 text_file.close()
 
+    def fetch_all(self):        
+        for ctx_stock in Symbols.fetch_all_ctx_stocks():
+            self.fetch(ctx_stock.symbol, skip_existing = True)
 
-class YahooQuoteFeederTest(unittest.TestCase):
+
+class YahooQuoteFeederTest:
     
     def test_fetch(self):
         symbol = "600399.SS"
-        fetcher = YahooQuoteFeeder(tempfile.gettempdir() + os.path.sep + "yahoo_quotes")
+        fetcher = YahooQuoteFeeder(tempfile.gettempdir() + os.path.sep + "eod_quotes")
         file_name = fetcher.fetch(symbol) 
         assert file_name != None
         assert os.path.exists(file_name)
@@ -151,15 +158,21 @@ class YahooQuoteFeederTest(unittest.TestCase):
             cassandra_session.disconnect()
 
     def test_fetch_all(self):
-        fetcher = YahooQuoteFeeder(tempfile.gettempdir() + os.path.sep + "yahoo_quotes")
+        fetcher = YahooQuoteFeeder(tempfile.gettempdir() + os.path.sep + "eod_quotes")
         fetcher.fetch_all()
+
 
 class CtxQuoteFeederTest(unittest.TestCase):
     
     def test_fetch(self):
         symbol = "sh600399"
-        fetcher = CtxQuoteFeeder(folder = tempfile.gettempdir() + os.path.sep + "ctx_quotes")
+        fetcher = CtxQuoteFeeder(tempfile.gettempdir() + os.path.sep + "eod_quotes")
         file_name = fetcher.fetch(symbol)
         assert file_name != None
         assert os.path.exists(file_name)
         os.remove(file_name)
+
+
+    def test_fetch_all(self):
+        fetcher = CtxQuoteFeeder(tempfile.gettempdir() + os.path.sep + "eod_quotes")
+        fetcher.fetch_all()
