@@ -17,7 +17,7 @@ class EodQuote(object):
         Constructor
         '''
         self.symbol = symbol
-        self.date = datetime.strptime(date, "%Y-%m-%d").date()
+        self.date = datetime.utcfromtimestamp(datetime.strptime(date, "%Y-%m-%d").date())
         self.open = float(open_)
         self.high = float(high)
         self.low = float(low)

@@ -4,8 +4,9 @@ Created on 23 May 2015
 @author: Univer
 '''
 
-import os, json, unittest
-from datetime import datetime
+import os
+import json
+import unittest
 from quotes.quote import CtxEodQuote, YahooEodQuote
 from cassandra.cluster import Cluster
 from common.logging import Logger
@@ -55,7 +56,7 @@ class CtxQuoteLoader(QuoteLoader):
             for symbol in loaded_json:
                 arrays = loaded_json[symbol]
                 for index, value in enumerate(arrays["dates"]):
-                    date = datetime.utcfromtimestamp(arrays["dates"][index])
+                    date = arrays["dates"][index]
                     open_ = arrays["opens"][index]
                     high = arrays["highs"][index]
                     low = arrays["lows"][index]
