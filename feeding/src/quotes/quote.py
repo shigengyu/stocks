@@ -4,7 +4,7 @@ Created on 23 May 2015
 @author: Univer
 '''
 
-import unittest, time
+import unittest
 from datetime import datetime
 
 class EodQuote(object):
@@ -17,7 +17,7 @@ class EodQuote(object):
         Constructor
         '''
         self.symbol = symbol
-        self.date = datetime.utcfromtimestamp(time.mktime(datetime.strptime(date, "%Y-%m-%d").date().timetuple()))
+        self.date = datetime.strptime(date, "%Y-%m-%d").date()
         self.open = float(open_)
         self.high = float(high)
         self.low = float(low)
