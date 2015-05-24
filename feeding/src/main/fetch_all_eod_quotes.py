@@ -7,7 +7,7 @@ Created on 23 May 2015
 import sys
 
 if __name__ == '__main__':
-    if len(sys.argv < 2):
+    if len(sys.argv) < 2:
         print("Missing EOD quote folder")
         exit
         
