@@ -5,7 +5,10 @@ Created on 23 May 2015
 '''
 
 import sys, os, inspect
-parent_folder = os.path.realpath(os.path.abspath(os.path.join(os.path.split(inspect.getfile(inspect.currentframe())), os.path.pardir)[0]))
+
+current_file = inspect.getfile(inspect.currentframe())
+parent_dir = os.path.join(os.path.split(current_file)[0], os.path.pardir)
+parent_folder = os.path.realpath(os.path.abspath(parent_dir))
 print("parent_folder = %s", parent_folder)
 if parent_folder not in sys.path:
     sys.path.insert(0, parent_folder)
