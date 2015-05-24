@@ -117,7 +117,7 @@ class CtxQuoteFeeder(QuoteFeeder):
 
     def download_quotes(self, symbol, skip_existing):
         conn = http.client.HTTPConnection("ctxalgo.com")
-        conn.request("GET", "/api/ohlc/%s?start-date=%s&end-date=%s" % (symbol, "2010-01-01", time.strftime("%Y-%m-%d")))
+        conn.request("GET", "/api/ohlc/%s?start-date=%s&end-date=%s" % (symbol, "1900-01-01", time.strftime("%Y-%m-%d")))
         response_body = conn.getresponse().read().decode("utf-8")
         
         file_name = self.get_file_name_by_symbol(symbol)

@@ -13,15 +13,15 @@ if parent_folder not in sys.path:
     sys.path.insert(0, parent_folder)
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        print("Missing EOD quote folder")
+    if len(sys.argv) < 3 or (sys.argv[2] != "yahoo" and sys.argv[2] != "ctx"):
+        print("Usage: python3 fetch_all_eod_quotes.py /projects/stocks/data/eod_quotes [ctx|yahoo]")
         exit
-        
+    
     from quotes import quote_feeder
-    ctx_feeder = quote_feeder.CtxQuoteFeeder(sys.argv[1])
-    ctx_feeder.fetch_all()
-    
-    yahoo_feeder = quote_feeder.YahooQuoteFeeder(sys.argv[1])
-    yahoo_feeder.fetch_all()
-    
-    
+    if sys.argv[2] == "yahoo":
+        yahoo_feeder = quote_feeder.YahooQuoteFeeder(sys.argv[1])
+        yahoo_feeder.fetch_all()
+        
+    if sys.argv[2] == "ctx":
+        ctx_feeder = quote_feeder.CtxQuoteFeeder(sys.argv[1])
+        ctx_feeder.fetch_all()
