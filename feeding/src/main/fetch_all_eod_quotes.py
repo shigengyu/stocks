@@ -15,5 +15,5 @@ if parent_folder not in sys.path:
 
 if __name__ == '__main__':
     from quotes import quote_feeder
-    feeder = quote_feeder.QuoteFeeder(sys.argv[1])
+    feeder = quote_feeder.YahooQuoteFeeder(sys.argv[1])
     feeder.fetch_all()
