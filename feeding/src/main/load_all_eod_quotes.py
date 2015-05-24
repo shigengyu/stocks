@@ -24,7 +24,7 @@ if __name__ == '__main__':
         folder = sys.argv[1]
         for file in os.listdir(folder):
             symbol = file
-            file_name = os.path.realpath(os.path.abspath(file))
+            file_name = os.path.realpath(os.path.abspath(os.path.join(folder, file)))
             eod_quotes = CtxQuoteLoader.load_from_file(file_name)
             count = 0
             for eod_quote in eod_quotes:
