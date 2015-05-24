@@ -29,7 +29,7 @@ if __name__ == '__main__':
             count = 0
             for eod_quote in eod_quotes:
                 loader.insert_eod_quote(eod_quote)
-                ++count
+                count = count + 1
             logger.info("Loaded %d quotes for file %s for symbol %s" % (count, file_name, symbol))
     finally:
         loader.disconnect()
