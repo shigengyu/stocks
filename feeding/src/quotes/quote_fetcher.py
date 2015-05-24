@@ -33,6 +33,10 @@ class QuoteFetcher(object):
         
         file_name = self.folder + os.path.sep + symbol
         
+        if os.path.exists(file_name):
+            QuoteFetcher.logger.info("Quotes for %s already exists in %s" % (symbol, file_name))
+            return file_name
+        
         'Save response to file if valid (starts with "Date")'
         if response_body.startswith("Date"):
             try:
@@ -53,11 +57,10 @@ class QuoteFetcher(object):
             'symbols = Symbols.search(stock)'
             symbols = [ stock + ".SS", stock + ".SH", stock + ".SZ" ]
             
-            success = False            
+            success = False
             for symbol in symbols:
                 if self.fetch(symbol) != None:
                     success = True
-                    break
 
             if not success:
                 QuoteFetcher.logger.warn("Failed to find symbol with pattern %s" % stock)
