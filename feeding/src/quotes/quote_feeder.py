@@ -98,9 +98,10 @@ class YahooQuoteFeeder(QuoteFeeder):
     
                 if matched_yahoo_symbol != None:
                     QuoteFeeder.logger.info("[%s] -> [%s]" % (ctx_stock.symbol, matched_yahoo_symbol))
-                    self.insert_symbol_mapping(cassandra_session, ctx_stock.symbol, matched_yahoo_symbol, ctx_stock.name, ctx_stock.symbol[2:])
                 else:
                     QuoteFeeder.logger.info("[%s] not found in Yahoo" % ctx_stock.symbol)
+                
+                self.insert_symbol_mapping(cassandra_session, ctx_stock.symbol, matched_yahoo_symbol, ctx_stock.name, ctx_stock.symbol[2:])
         finally:
             cassandra_session.disconnect()
 
