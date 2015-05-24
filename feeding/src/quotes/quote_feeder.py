@@ -92,11 +92,11 @@ class YahooQuoteFeeder(QuoteFeeder):
                         matched_yahoo_symbol = test_yahoo_symbol
                         break
     
-            if matched_yahoo_symbol != None:
-                YahooQuoteFeeder.logger.info("[%s] -> [%s]" % (ctx_stock.symbol, test_yahoo_symbol))
-                self.insert_symbol_mapping(ctx_stock.symbol, matched_yahoo_symbol, ctx_stock.name, ctx_stock.symbol[2:])
-            else:
-                YahooQuoteFeeder.logger.info("[%s] not found in Yahoo" % ctx_stock.symbol)
+                if matched_yahoo_symbol != None:
+                    YahooQuoteFeeder.logger.info("[%s] -> [%s]" % (ctx_stock.symbol, matched_yahoo_symbol))
+                    self.insert_symbol_mapping(cassandra_session, ctx_stock.symbol, matched_yahoo_symbol, ctx_stock.name, ctx_stock.symbol[2:])
+                else:
+                    YahooQuoteFeeder.logger.info("[%s] not found in Yahoo" % ctx_stock.symbol)
         finally:
             cassandra_session.disconnect()
 
@@ -133,7 +133,7 @@ class CtxQuoteFeeder(QuoteFeeder):
 
 class YahooQuoteFeederTest(unittest.TestCase):
     
-    def test_fetch_yahoo(self):
+    def test_fetch(self):
         symbol = "600399.SS"
         fetcher = YahooQuoteFeeder(tempfile.gettempdir() + os.path.sep + "yahoo_quotes")
         file_name = fetcher.fetch(symbol) 
@@ -150,9 +150,13 @@ class YahooQuoteFeederTest(unittest.TestCase):
         finally:
             cassandra_session.disconnect()
 
+    def test_fetch_all(self):
+        fetcher = YahooQuoteFeeder(tempfile.gettempdir() + os.path.sep + "yahoo_quotes")
+        fetcher.fetch_all()
+
 class CtxQuoteFeederTest(unittest.TestCase):
     
-    def test_fetch_ctx(self):
+    def test_fetch(self):
         symbol = "sh600399"
         fetcher = CtxQuoteFeeder(folder = tempfile.gettempdir() + os.path.sep + "ctx_quotes")
         file_name = fetcher.fetch(symbol)
