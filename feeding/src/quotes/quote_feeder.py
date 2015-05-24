@@ -43,8 +43,6 @@ class QuoteFeeder(object):
 
 class YahooQuoteFeeder(QuoteFeeder):
     
-    logger = Logger.get_logger(__name__)
-    
     def __init__(self, folder):
         super().__init__(folder)
     
@@ -56,7 +54,7 @@ class YahooQuoteFeeder(QuoteFeeder):
         file_name = self.get_file_name_by_symbol(symbol)
         
         if skip_existing and os.path.exists(file_name):
-            YahooQuoteFeeder.logger.info("Quotes for %s already exists in %s" % (symbol, file_name))
+            QuoteFeeder.logger.info("Quotes for %s already exists in %s" % (symbol, file_name))
             return file_name
         
         'Save response to file if valid (starts with "Date")'
@@ -64,7 +62,7 @@ class YahooQuoteFeeder(QuoteFeeder):
             try:
                 text_file = open(file_name, "w")
                 text_file.write(response_body)
-                YahooQuoteFeeder.logger.info("Quotes for %s saved to file %s" % (symbol, file_name))
+                QuoteFeeder.logger.info("Quotes for %s saved to file %s" % (symbol, file_name))
                 return file_name
             finally:
                 if not text_file == None:
@@ -109,8 +107,6 @@ class YahooQuoteFeeder(QuoteFeeder):
 
 class CtxQuoteFeeder(QuoteFeeder):
     
-    logger = Logger.get_logger(__name__)
-    
     def __init__(self, folder):
         super().__init__(folder)
 
@@ -122,17 +118,18 @@ class CtxQuoteFeeder(QuoteFeeder):
         file_name = self.get_file_name_by_symbol(symbol)
         
         if skip_existing and os.path.exists(file_name):
-            YahooQuoteFeeder.logger.info("Quotes for %s already exists in %s" % (symbol, file_name))
+            QuoteFeeder.logger.info("Quotes for %s already exists in %s" % (symbol, file_name))
             return file_name
         
         try:
             text_file = open(file_name, "w")
             text_file.write(response_body)
-            YahooQuoteFeeder.logger.info("Quotes for %s saved to file %s" % (symbol, file_name))
+            QuoteFeeder.logger.info("Quotes for %s saved to file %s" % (symbol, file_name))
             return file_name
         finally:
             if text_file != None:
                 text_file.close()
+
 
 class YahooQuoteFeederTest(unittest.TestCase):
     
@@ -143,14 +140,6 @@ class YahooQuoteFeederTest(unittest.TestCase):
         assert file_name != None
         assert os.path.exists(file_name)
         os.remove(file_name)
-
-    def test_fetch_ctx(self):
-        symbol = "sh600399"
-        fetcher = CtxQuoteFeeder(folder = tempfile.gettempdir() + os.path.sep + "ctx_quotes")
-        file_name = fetcher.fetch(symbol)
-        assert file_name != None
-        assert os.path.exists(file_name)
-        'os.remove(file_name)'
     
     def test_insert_symbol_mapping(self):
         cassandra_session = CassandraSession()
@@ -160,3 +149,13 @@ class YahooQuoteFeederTest(unittest.TestCase):
             yahoo_quote_fetcher.insert_symbol_mapping(cassandra_session, "sh600399", "600399.SS", None, "600399")
         finally:
             cassandra_session.disconnect()
+
+class CtxQuoteFeederTest(unittest.TestCase):
+    
+    def test_fetch_ctx(self):
+        symbol = "sh600399"
+        fetcher = CtxQuoteFeeder(folder = tempfile.gettempdir() + os.path.sep + "ctx_quotes")
+        file_name = fetcher.fetch(symbol)
+        assert file_name != None
+        assert os.path.exists(file_name)
+        os.remove(file_name)
