@@ -139,7 +139,7 @@ class CtxQuoteFeeder(QuoteFeeder):
             self.fetch(ctx_stock.symbol, skip_existing = True)
 
 
-class YahooQuoteFeederTest:
+class YahooQuoteFeederTests(unittest.TestCase):
     
     def test_fetch(self):
         symbol = "600399.SS"
@@ -149,6 +149,7 @@ class YahooQuoteFeederTest:
         assert os.path.exists(file_name)
         os.remove(file_name)
     
+    @unittest.skip
     def test_insert_symbol_mapping(self):
         cassandra_session = CassandraSession()
         yahoo_quote_fetcher = YahooQuoteFeeder(folder = tempfile.gettempdir() + os.path.sep + "yahoo_quotes")
@@ -158,12 +159,13 @@ class YahooQuoteFeederTest:
         finally:
             cassandra_session.disconnect()
 
+    @unittest.skip
     def test_fetch_all(self):
         fetcher = YahooQuoteFeeder(tempfile.gettempdir() + os.path.sep + "eod_quotes")
         fetcher.fetch_all()
 
 
-class CtxQuoteFeederTest(unittest.TestCase):
+class CtxQuoteFeederTests(unittest.TestCase):
     
     def test_fetch(self):
         symbol = "sh600399"
@@ -173,7 +175,7 @@ class CtxQuoteFeederTest(unittest.TestCase):
         assert os.path.exists(file_name)
         os.remove(file_name)
 
-
+    @unittest.skip
     def test_fetch_all(self):
         fetcher = CtxQuoteFeeder(tempfile.gettempdir() + os.path.sep + "eod_quotes")
         fetcher.fetch_all()
