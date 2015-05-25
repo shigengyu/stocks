@@ -42,7 +42,9 @@ class QuoteUpdater(object):
         
         eod_quotes = []
         
+        symbol_count = 0
         for symbol in loaded_json:
+            symbol_count = symbol_count + 1
             arrays = loaded_json[symbol]
             for index, value in enumerate(arrays["dates"]):
                 date = arrays["dates"][index]
@@ -57,7 +59,7 @@ class QuoteUpdater(object):
                 eod_quotes.append(eod_quote)
                 self.quote_loader.insert_eod_quote(eod_quote)
 
-        QuoteUpdater.logger.info("Updated %d quotes for %d symbols between %s and today" % (len(eod_quotes), len(list(symbols)), start_date))
+        QuoteUpdater.logger.info("Updated %d quotes for %d symbols between %s and today" % (len(eod_quotes), symbol_count, start_date))
 
     def update_all_quotes(self, start_date):
         stocks = Symbols.fetch_all_ctx_stocks()
