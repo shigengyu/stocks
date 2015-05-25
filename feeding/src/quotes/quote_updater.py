@@ -52,19 +52,19 @@ class QuoteUpdater(object):
                 close = arrays["closes"][index]
                 volume = arrays["volumes"][index]
                 amount = arrays["amounts"][index]
-                self.quote_loader.insert_eod_quote(CtxEodQuote(symbol, date, open_, high, low, close, volume, amount))
+                
+                eod_quote = CtxEodQuote(symbol, date, open_, high, low, close, volume, amount)
+                eod_quotes.append(eod_quote)
+                self.quote_loader.insert_eod_quote(eod_quote)
 
         QuoteUpdater.logger.info("Updated %d quotes for %d symbols between %s and today" % (len(eod_quotes), len(list(symbols)), start_date))
-        return eod_quotes
 
     def update_all_quotes(self, start_date):
         stocks = Symbols.fetch_all_ctx_stocks()
         chunks = [stocks[x: x + 50] for x in range(0, len(stocks), 50)]
         for chunk in chunks:
             symbols = map(lambda stock : stock.symbol, chunk)
-            for eod_quote in self.update_quotes(symbols, start_date):
-                self.quote_loader.insert_eod_quote(eod_quote)
-
+            self.update_quotes(symbols, start_date)
 
 class QuoteUpdaterTests(unittest.TestCase):
     
