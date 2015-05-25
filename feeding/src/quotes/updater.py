@@ -8,7 +8,7 @@ import http.client
 import time
 import json
 import unittest
-from quotes.quote import CtxEodQuote
+from quotes.eod_quote import CtxEodQuote
 from quotes.loader import QuoteLoader
 from symbols.symbols import Symbols
 from common.logging import Logger
