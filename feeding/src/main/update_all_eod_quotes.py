@@ -13,7 +13,7 @@ if parent_folder not in sys.path:
 
 
 if __name__ == '__main__':
-    from quotes.quote_updater import QuoteUpdater
+    from quotes.updater import QuoteUpdater
     from common.logging import Logger
     from datetime import datetime
     

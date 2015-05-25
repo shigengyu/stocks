@@ -5,6 +5,7 @@ Created on 23 May 2015
 '''
 
 import unittest
+import json
 from datetime import datetime
 
 class EodQuote(object):
@@ -46,9 +47,21 @@ class CtxEodQuote(EodQuote):
         self.amount = amount
 
     @staticmethod
-    def from_json(json):
-        ''
-
+    def from_json(json_string):
+        eod_quotes = []
+        loaded_json = json.loads(json_string)
+        for symbol in loaded_json:
+            arrays = loaded_json[symbol]
+            for index, value in enumerate(arrays["dates"]):
+                date = arrays["dates"][index]
+                open_ = arrays["opens"][index]
+                high = arrays["highs"][index]
+                low = arrays["lows"][index]
+                close = arrays["closes"][index]
+                volume = arrays["volumes"][index]
+                amount = arrays["amounts"][index]
+                eod_quotes.append(CtxEodQuote(symbol, date, open_, high, low, close, volume, amount))
+        return eod_quotes
 
 class EodQuoteTests(unittest.TestCase):
     

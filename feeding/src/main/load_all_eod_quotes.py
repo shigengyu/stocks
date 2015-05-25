@@ -13,7 +13,7 @@ if parent_folder not in sys.path:
 
 
 if __name__ == '__main__':
-    from quotes.quote_loader import CtxQuoteLoader
+    from quotes.loader import CtxQuoteLoader
     from common.logging import Logger
     
     logger = Logger.get_logger(__name__)

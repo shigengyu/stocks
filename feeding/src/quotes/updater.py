@@ -4,20 +4,17 @@ Created on 24 May 2015
 @author: Univer
 '''
 
-import os
 import http.client
 import time
 import json
 import unittest
 from quotes.quote import CtxEodQuote
+from quotes.loader import QuoteLoader
 from symbols.symbols import Symbols
-from quotes.quote_loader import QuoteLoader
 from common.logging import Logger
 
 class QuoteUpdater(object):
-    '''
-    classdocs
-    '''
+
     logger = Logger.get_logger(__name__)
 
     def __init__(self):
@@ -67,6 +64,7 @@ class QuoteUpdater(object):
         for chunk in chunks:
             symbols = map(lambda stock : stock.symbol, chunk)
             self.update_quotes(symbols, start_date)
+
 
 class QuoteUpdaterTests(unittest.TestCase):
     

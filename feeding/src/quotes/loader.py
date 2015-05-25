@@ -5,9 +5,8 @@ Created on 23 May 2015
 '''
 
 import os
-import json
 import unittest
-from quotes.quote import CtxEodQuote, YahooEodQuote
+from quotes.eod_quote import CtxEodQuote, YahooEodQuote
 from cassandra.cluster import Cluster
 from common.logging import Logger
 
@@ -49,22 +48,9 @@ class CtxQuoteLoader(QuoteLoader):
 
     @staticmethod
     def load_from_file(file_name):
-        eod_quotes = []
         with open(file_name, "r") as quote_file:
             file_content = quote_file.read().replace(os.linesep, "")
-            loaded_json = json.loads(file_content)
-            for symbol in loaded_json:
-                arrays = loaded_json[symbol]
-                for index, value in enumerate(arrays["dates"]):
-                    date = arrays["dates"][index]
-                    open_ = arrays["opens"][index]
-                    high = arrays["highs"][index]
-                    low = arrays["lows"][index]
-                    close = arrays["closes"][index]
-                    volume = arrays["volumes"][index]
-                    amount = arrays["amounts"][index]
-                    eod_quotes.append(CtxEodQuote(symbol, date, open_, high, low, close, volume, amount))
-        return eod_quotes
+            return CtxEodQuote.from_json(file_content)
 
 
 class QuoteLoaderTests(unittest.TestCase):
@@ -78,6 +64,7 @@ class QuoteLoaderTests(unittest.TestCase):
         finally:
             quote_loader.disconnect()
 
+    @unittest.skip
     def test_insert_eod_quote(self):
         quote_loader = QuoteLoader()
         try:
@@ -90,7 +77,8 @@ class QuoteLoaderTests(unittest.TestCase):
             quote_loader.disconnect()
 
 class YahooQuoteLoaderTests(unittest.TestCase):
-    
+
+    @unittest.skip    
     def test_load_from_file(self):
         file_name = "G:\\quotes\\300460.SZ"
         eod_quotes = YahooQuoteLoader.load_from_file(file_name)
@@ -100,7 +88,8 @@ class YahooQuoteLoaderTests(unittest.TestCase):
             
 
 class CtxQuoteLoaderTests(unittest.TestCase):
-    
+
+    @unittest.skip    
     def test_load_from(self):
         file_name = "H:\\Temp\\eod_quotes\\ctx\\sh600375"
         eod_quotes = CtxQuoteLoader.load_from_file(file_name)

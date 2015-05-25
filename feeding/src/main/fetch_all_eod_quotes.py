@@ -17,11 +17,11 @@ if __name__ == '__main__':
         print("Usage: python3 fetch_all_eod_quotes.py /projects/stocks/data/eod_quotes [ctx|yahoo]")
         exit
     
-    from quotes import quote_feeder
+    from quotes import feeder
     if sys.argv[2] == "yahoo":
-        yahoo_feeder = quote_feeder.YahooQuoteFeeder(sys.argv[1])
+        yahoo_feeder = feeder.YahooQuoteFeeder(sys.argv[1])
         yahoo_feeder.fetch_all()
         
     if sys.argv[2] == "ctx":
-        ctx_feeder = quote_feeder.CtxQuoteFeeder(sys.argv[1])
+        ctx_feeder = feeder.CtxQuoteFeeder(sys.argv[1])
         ctx_feeder.fetch_all()
