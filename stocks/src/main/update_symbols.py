@@ -5,9 +5,6 @@ Created on 5 Jun 2015
 '''
 
 import sys, os, inspect
-from symbols.symbols import Symbols
-from common.cassandra import CassandraSession
-from common.logging import Logger
 
 current_file = inspect.getfile(inspect.currentframe())
 parent_dir = os.path.join(os.path.split(current_file)[0], os.path.pardir)
@@ -16,6 +13,10 @@ if parent_folder not in sys.path:
     sys.path.insert(0, parent_folder)
 
 if __name__ == '__main__':
+    from symbols.symbols import Symbols
+    from common.cassandra import CassandraSession
+    from common.logging import Logger
+    
     logger = Logger.get_logger(__name__)
     
     result = Symbols.fetch_all_ctx_stocks()
