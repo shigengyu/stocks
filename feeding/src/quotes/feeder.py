@@ -21,9 +21,6 @@ class QuoteFeeder(object):
     logger = Logger.get_logger(__name__)
 
     def __init__(self, folder):
-        '''
-        Constructor
-        '''
         if not os.path.exists(folder):
             os.makedirs(folder)
         self.folder = folder
@@ -70,7 +67,7 @@ class YahooQuoteFeeder(QuoteFeeder):
                 text_file.write(response_body)
                 return file_name
             finally:
-                if not text_file == None:
+                if text_file != None:
                     text_file.close()
         else:
             QuoteFeeder.logger.warning("Ignoring invalid quote response on symbol %s" % symbol)
