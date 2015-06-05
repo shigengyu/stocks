@@ -10,6 +10,7 @@ import json
 import re
 import collections
 from common.logging import Logger
+from common.cassandra import CassandraSession
 
 class Symbols(object):
     
@@ -17,7 +18,7 @@ class Symbols(object):
     classdocs
     '''
     logger = Logger.get_logger(__name__)
-    CtxStock = collections.namedtuple("CtxStock", ["symbol", "name"], verbose = False)
+    CtxStock = collections.namedtuple("CtxStock", ["symbol", "name", "short_symbol"], verbose = False)
 
     def __init__(self):
         '''
@@ -37,7 +38,8 @@ class Symbols(object):
             stocks = []
             loaded_json = json.loads(response)
             for symbol in loaded_json:
-                stocks.append(Symbols.CtxStock(symbol, loaded_json[symbol]))
+                name = loaded_json[symbol]
+                stocks.append(Symbols.CtxStock(symbol, name, symbol[2:]))
             return stocks
         except:
             return []
@@ -66,6 +68,28 @@ class Symbols(object):
             return None
 
     @staticmethod
+    def get_yahoo_symbol_from_ctx_symbol(ctx_symbol):
+        test_yahoo_symbols = []
+        if ctx_symbol.startswith("sh"):
+            test_yahoo_symbols.append(ctx_symbol[2:] + ".SH")
+        elif ctx_symbol.startswith("sz"):
+            test_yahoo_symbols.append(ctx_symbol[2:] + ".SZ")
+
+        test_yahoo_symbols.append(ctx_symbol[2:] + ".SS")
+        
+        for test_yahoo_symbol in test_yahoo_symbols:
+            try:
+                conn = http.client.HTTPConnection("ichart.finance.yahoo.com")
+                conn.request("GET", "/table.csv?s=%s" % test_yahoo_symbol)
+                
+                if conn.getresponse().read(4).decode("utf-8") == "Date":
+                    return test_yahoo_symbol
+            except:
+                return None
+            
+        return None
+
+    @staticmethod
     def search_from_sina(pattern):
         symbols = []
         try:
@@ -87,11 +111,17 @@ class Symbols(object):
         except:
             return []
 
+    @staticmethod
+    def insert_symbol_mapping(cassandra_session, ctx_symbol, yahoo_symbol, name, short_symbol):
+        cassandra_session.execute("insert into symbols (ctx_symbol, yahoo_symbol, name, short_symbol, update_timestamp) values (%s, %s, %s, %s, dateof(now()))",
+                                  (ctx_symbol, yahoo_symbol, name, short_symbol))
 
 class SymbolsTests(unittest.TestCase):
     
     def test_fetch_all_ctx_stocks(self):
         result = Symbols.fetch_all_ctx_stocks()
+        for ctx_stock in result:
+            print("%s -> %s" % (ctx_stock.symbol, Symbols.get_yahoo_symbol_from_ctx_symbol(ctx_stock.symbol)))
         Symbols.logger.info("%d stocks returned from CoreTX" % len(result))
         assert len(result) > 0
      
@@ -108,3 +138,12 @@ class SymbolsTests(unittest.TestCase):
         assert len(result) == 2
         assert result[0] == "000807.SZ"
         assert result[1] == "000807.SH"
+        
+    @unittest.skip
+    def test_insert_symbol_mapping(self):
+        cassandra_session = CassandraSession()
+        try:
+            cassandra_session.connect()
+            Symbols.insert_symbol_mapping(cassandra_session, "sh600399", "600399.SS", None, "600399")
+        finally:
+            cassandra_session.disconnect()
