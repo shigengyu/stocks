@@ -11,27 +11,103 @@ class DatabaseInterface(object):
         self._engine.echo = True
         
     def create_connection(self):
-        return DatabaseConnectionHolder(self._engine)
+        """
+        Creates a database connection holder which wraps a transaction created from the SQLAlchemy engine        
+        
+        Returns
+        -------
+        conn : DatabaseConnectionHolder
+            The database connection holder
+        """
+        conn = DatabaseConnectionHolder(self._engine)
+        return conn
     
     def create_transaction(self):
-        return DatabaseTransactionHolder(self._engine)
-    
-    def select(self):
-        pass
+        """
+        Creates a database transaction holder which wraps a transaction created from the SQLAlchemy engine
+        
+        Returns
+        -------
+        trans : DatabaseTransactionHolder
+            The database transaction holder
+        """
+        trans = DatabaseTransactionHolder(self._engine)
+        return trans
     
     def select_dataframe(self, sql):
-        return pd.read_sql_query(sql, self._engine)
+        """
+        Executes a SQL query and dumps the result into a pandas DataFrame
+        
+        Parameters
+        ----------
+        sql : str
+            The SQL to execute
+        
+        Returns
+        -------
+        df : DataFrame
+        """
+        df = pd.read_sql_query(sql, self._engine)
+        return df
     
-    def insert_dataframe(self, dataframe, table_name):
-        metadata = TableMetadata.get(self._engine, table_name)
-        if metadata.identity_column is not None:
+    def insert_dataframe(self, dataframe, table_name, exclude_columns = [], create_table_if_not_exist=False):
+        """
+        Inserts a pandas DataFrame into a database table
+        
+        Parameters
+        ----------
+        dataframe : DataFrame
+            The data frame to be inserted
+        
+        table_name : str
+            The database table to insert
+            
+        exclude_columns : list of str
+            The data frame column names to be excluded from the insert
+        
+        create_table_if_not_exist : bool, default False
+            Whether or not to create the database table if it does not exist
+        """
+        try:
+            metadata = TableMetadata.get(self._engine, table_name)
+        except DatabaseTableMetadataError as e:
+            if not create_table_if_not_exist:
+                raise e
+            
+        if metadata is not None and metadata.identity_column is not None:
             del dataframe[metadata.identity_column]
+        for column in exclude_columns:
+            del dataframe[column]
         dataframe.to_sql(metadata.table_name, self._engine, if_exists = 'append', index = False)
     
-    '''
-    Merge data frame into table. staging_table_name must be provided as data frame to_sql does not yet support reusing connection
-    '''
-    def merge_dataframe(self, dataframe, table_name, match_columns=[], src_alias='src', dest_alias='dest', additional_columns = {}, exclude_columns = []):
+    def merge_dataframe(self, dataframe, table_name, match_columns=[], exclude_columns = [], additional_columns = {}, src_alias='src', dest_alias='dest'):
+        """
+        Merges a pandas DataFrame into a database table
+        
+        Parameters
+        ----------
+        dataframe : DataFrame
+            The data frame to be inserted
+        
+        table_name : str
+            The database table to merge
+        
+        match_columns : list of str
+            Data frame column names to be used in the SQL MATCH clause
+        
+        exclude_columns : list of str, default empty list
+            The data frame column names to be excluded from the merge
+        
+        additional_columns : dict of str : str, default empty dict
+            Additional column names and values to be included in the merge, which is not included in the data frame. Most likely used for database side generated values
+            e.g. { 'merge_timestamp', 'GETDATE()' }
+        
+        src_alias : str, default 'src'
+            The alias of the merge source table, i.e. the temporary table which the data frame is loaded into
+        
+        dest_alias : str, default 'dest'
+            The alias of the merge target table
+        """
         if match_columns == None or len(match_columns) == 0:
             raise DatabaseInterfaceError("Match columns must be provided if data frame does not have index")
                 
@@ -50,22 +126,27 @@ class DatabaseInterface(object):
             print("Inserted %d row(s) into %s" % (rowcount, staging_table_name))
             
             merge_sql = '''
-            MERGE INTO %s %s
-            USING %s %s
-            ON %s
+            MERGE INTO {dest_name} {dest_alias}
+            USING {src_name} {src_alias}
+            ON {match_clause}
             WHEN MATCHED THEN
-            UPDATE SET %s
+            UPDATE SET {update_clause}
             WHEN NOT MATCHED THEN
-            INSERT (%s) VALUES (%s)
+            INSERT ({insert_columns}) VALUES ({insert_values})
             ;'''
-            match_clause = ' AND '.join("%s.%s = %s.%s" % (src_alias, x, dest_alias, x) for x in match_columns)
-            update_clause = ', '.join('%s = %s.%s' % (x, src_alias, x) for x in metadata.non_identity_columns if x not in match_columns and x not in exclude_columns) \
-                + ''.join(", %s = %s" % (k, v) for k, v in additional_columns.iteritems())
-            insert_columns = ', '.join(x for x in metadata.non_identity_columns if x not in exclude_columns) \
-                + ''.join(", %s" % k for k in additional_columns.keys())
-            insert_values = ', '.join('%s.%s' % (src_alias, x) for x in metadata.non_identity_columns if x not in exclude_columns) \
-                + ''.join(", %s" % v for v in additional_columns.values())
-            sql = merge_sql % (metadata.table_name, dest_alias, staging_table_name, src_alias, match_clause,update_clause, insert_columns, insert_values)
+            sql = merge_sql.format(
+                dest_name = metadata.table_name,
+                dest_alias = dest_alias,
+                src_name = staging_table_name,
+                src_alias = src_alias,
+                match_clause = ' AND '.join("%s.%s = %s.%s" % (src_alias, x, dest_alias, x) for x in match_columns),
+                update_clause = ', '.join('%s = %s.%s' % (x, src_alias, x) for x in metadata.non_identity_columns if x not in match_columns and x not in exclude_columns) \
+                    + ''.join(", %s = %s" % (k, v) for k, v in additional_columns.iteritems()),
+                insert_columns = ', '.join(x for x in metadata.non_identity_columns if x not in exclude_columns) \
+                    + ''.join(", %s" % k for k in additional_columns.keys()),
+                insert_values = ', '.join('%s.%s' % (src_alias, x) for x in metadata.non_identity_columns if x not in exclude_columns) \
+                    + ''.join(", %s" % v for v in additional_columns.values())
+                )
             merge_result = conn.execute(sql)
             print("Merged %d row(s) from %s into %s" % (merge_result.rowcount, table_name, staging_table_name))
             
@@ -75,8 +156,22 @@ class DatabaseInterface(object):
                 conn.close()
     
     def execute(self, sql):
+        """
+        Executes a SQL query
+        
+        Parameters
+        ----------
+        sql : str
+            The SQL to execute
+        
+        Returns
+        -------
+        result :
+            Result of the SQL execution
+        """
         with self.create_connection() as conn:
-            return conn.execute(sql)
+            result = conn.execute(sql)
+            return result
         
     @staticmethod
     def _create_staging_table_name(table_name, persist_between_connections=False):
@@ -205,10 +300,12 @@ class TableMetadata(object):
             sql = sql + " and TABLE_SCHEMA = '%s'" % self.owner
                 
         df = pd.read_sql_query(sql % self.table_name, self._engine, index_col=None)
+        if len(df.index) == 0:
+            raise DatabaseTableMetadataError("Failed to load metadata as table [%s] does not exist" % self.table_name)
         
         databases = set(df.database.tolist())
         if len(databases) > 1:
-            raise DatabaseInterfaceError("Table %s exists in multiple databases (%s)" % (self.table_name, ', '.join(databases)))
+            raise DatabaseTableMetadataError("Table %s exists in multiple databases (%s)" % (self.table_name, ', '.join(databases)))
         
         self.full_table_name = "%s.%s.%s" % (df.database[0], df.owner[0], df.table_name[0])
         df_identity_columns = df[df.is_identity == 1]
@@ -222,6 +319,8 @@ class TableMetadata(object):
 class DatabaseInterfaceError(Exception):
     pass    
 
+class DatabaseTableMetadataError(Exception):
+    pass
 
 class TableMetadataTests(unittest.TestCase):
     
