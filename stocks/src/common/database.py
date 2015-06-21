@@ -1,6 +1,7 @@
 from sqlalchemy.engine import create_engine
 import unittest
 import pandas as pd
+import datetime
 
 class DatabaseInterface(object):
 
@@ -27,26 +28,23 @@ class DatabaseInterface(object):
     '''
     Merge data frame into table. staging_table_name must be provided as data frame to_sql does not yet support reusing connection
     '''
-    def merge_dataframe(self, dataframe, table_name, match_columns, staging_table_name=None, src_alias='src', dest_alias='dest', additional_columns = {}):
+    def merge_dataframe(self, dataframe, table_name, match_columns=[], src_alias='src', dest_alias='dest', additional_columns = {}, exclude_columns = []):
         if match_columns == None or len(match_columns) == 0:
-            raise DatabaseInterfaceError("Match columns must be provided when merging data frame")
-        
-        if staging_table_name == None:
-            raise DatabaseInterfaceError("Staging table name must be provided when merging data frame")
+            raise DatabaseInterfaceError("Match columns must be provided if data frame does not have index")
                 
         metadata = TableMetadata.get(self._engine, table_name)
         try:
             conn = self._engine.connect()
-            if staging_table_name == None:
-                staging_table_name = '#' + table_name
-                conn.execute("select top 0 * into %s from %s" % (staging_table_name, metadata.full_table_name))
-            else:
-                conn.execute("delete from %s" % staging_table_name)
+            staging_table_name = DatabaseInterface._create_staging_table_name(table_name)
             
             if metadata.identity_column != None:
                 dataframe.drop(metadata.identity_column, axis=1, inplace=True)
+            for column in exclude_columns:
+                dataframe.drop(column, axis=1, inplace=True)
             dataframe.drop_duplicates(subset=match_columns, inplace=True)
-            dataframe.to_sql(staging_table_name, conn.engine, if_exists = 'append', index = False)
+            dataframe.to_sql(staging_table_name, conn.engine, index = False)    # current pandas version does not support reusing connection
+            rowcount = conn.execute("select count(*) from %s" % staging_table_name).fetchone()[0]
+            print("Inserted %d row(s) into %s" % (rowcount, staging_table_name))
             
             merge_sql = '''
             MERGE INTO %s %s
@@ -65,16 +63,25 @@ class DatabaseInterface(object):
             insert_values = ', '.join('%s.%s' % (src_alias, x) for x in metadata.non_identity_columns) \
                 + ''.join(", %s" % v for v in additional_columns.values())
             sql = merge_sql % (metadata.table_name, dest_alias, staging_table_name, src_alias, match_clause,update_clause, insert_columns, insert_values)
-            print(sql)
-            conn.execute(sql)
+            merge_result = conn.execute(sql)
+            print("Merged %d row(s) from %s into %s" % (merge_result.rowcount, table_name, staging_table_name))
+            
         finally:
             if conn != None:
-                conn.execute("delete from %s" % staging_table_name)
+                conn.execute("drop table " + staging_table_name)
                 conn.close()
     
     def execute(self, sql):
         with self.create_connection() as conn:
             return conn.execute(sql)
+        
+    @staticmethod
+    def _create_staging_table_name(table_name, persist_between_connections=True):
+        if persist_between_connections:
+            prefix = '##'
+        else:
+            prefix = '#'
+        return prefix + table_name + '_' + datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
 
 class DatabaseConnector(object):
@@ -194,7 +201,7 @@ class DatabaseConnectionTests(unittest.TestCase):
     def test_merge_dataframe(self):
         di = DatabaseInterface(MSSQLDatabaseConnector())
         df = di.select_dataframe("select * from ais_positions")
-        di.merge_dataframe(df, "ais_positions" ,["imo", "model_timestamp"], staging_table_name="ais_positions_staging")
+        di.merge_dataframe(df, "ais_positions" ,["imo", "model_timestamp"])
 
 class DatabaseConnectionHolderTests(unittest.TestCase):
     
