@@ -13,6 +13,9 @@ class DatabaseInterface(object):
     def create_connection(self):
         return DatabaseConnectionHolder(self._engine)
     
+    def create_transaction(self):
+        return DatabaseTransactionHolder(self._engine)
+    
     def select(self):
         pass
     
@@ -97,17 +100,59 @@ class DatabaseConnectionHolder(object):
         self._engine = engine
     
     def __enter__(self):
-        self._conn = self._engine.connect()
-        return self
+        return self.connect()
     
     def __exit__(self, type_, value, traceback):
+        self.close()
+
+    def connect(self):
+        self._conn = self._engine.connect()
+        print("Connection opened...")
+        return self
+        
+    def close(self):
         if self._conn != None:
             self._conn.close()
-            
+            print("Connection closed")
+
     def execute(self, sql):
         if self._conn == None:
             raise DatabaseInterfaceError("Connection not established inside DatabaseConnectionHolder")
         return self._conn.execute(sql)
+
+
+class DatabaseTransactionHolder(DatabaseConnectionHolder):
+    
+    def __init__(self, engine):
+        super(DatabaseTransactionHolder, self).__init__(engine)
+        self.is_committed = False
+        self.is_rolled_back = False
+    
+    def __enter__(self):
+        super(DatabaseTransactionHolder, self).__enter__()
+        self._trans = self._conn.begin()
+        return self
+    
+    def __exit__(self, type_, value, traceback):
+        if not self.is_committed and not self.is_rolled_back:
+            self._trans.rollback()
+            
+        super(DatabaseTransactionHolder, self).__exit__(type_, value, traceback)
+
+    def commit(self):
+        if self.is_committed:
+            raise DatabaseInterfaceError("Transaction as already committed")
+        if self.is_rolled_back:
+            raise DatabaseInterfaceError("Cannot commit transaction as already rolled back")
+        self._trans.commit()
+        self.is_committed = True
+        
+    def rollback(self):
+        if self.is_committed:
+            raise DatabaseInterfaceError("Cannot rollback transaction as already committed")
+        if not self.is_rolled_back:
+            self._trans.rollback()
+            self.is_rolled_back = True
 
 
 class MSSQLDatabaseConnector(DatabaseConnector):
@@ -188,20 +233,21 @@ class TableMetadataTests(unittest.TestCase):
 
 class DatabaseConnectionTests(unittest.TestCase):
     
+    def setUp(self):
+        self.di = DatabaseInterface(MSSQLDatabaseConnector())
+    
     def test_select_dataframe(self):
-        di = DatabaseInterface(MSSQLDatabaseConnector())
-        df = di.select_dataframe("select * from ais_positions")
+        df = self.di.select_dataframe("select * from ais_positions")
     
     def test_insert_dataframe(self):
-        di = DatabaseInterface(MSSQLDatabaseConnector())
-        df = di.select_dataframe("select * from ais_positions")
+        df = self.di.select_dataframe("select * from ais_positions")
         df = df[df.ais_position_id == 1]
-        di.insert_dataframe(df, "ais_positions")
+        self.di.insert_dataframe(df, "ais_positions")
 
     def test_merge_dataframe(self):
-        di = DatabaseInterface(MSSQLDatabaseConnector())
-        df = di.select_dataframe("select * from ais_positions")
-        di.merge_dataframe(df, "ais_positions" ,["imo", "model_timestamp"])
+        df = self.di.select_dataframe("select * from ais_positions")
+        self.di.merge_dataframe(df, "ais_positions" ,["imo", "model_timestamp"])
+
 
 class DatabaseConnectionHolderTests(unittest.TestCase):
     
@@ -209,4 +255,40 @@ class DatabaseConnectionHolderTests(unittest.TestCase):
         di = DatabaseInterface(MSSQLDatabaseConnector())
         with di.create_connection() as conn:
             pass
+
+class DataTransactionHolderTests(unittest.TestCase):
+
+    unittest_table_name = '##unittest_transaction'
+
+    def setUp(self):
+        self.di = DatabaseInterface(MSSQLDatabaseConnector())
+        self._conn = self.di.create_connection().connect()
+        self._conn.execute("create table %s ( number int )" % DataTransactionHolderTests.unittest_table_name)
+        self._conn.execute("insert into %s values (0)" % DataTransactionHolderTests.unittest_table_name)
+
+    def test_transaction_holder_commit(self):
+        with self.di.create_transaction() as trans:
+            trans.execute("update %s set number = number + 1"  % DataTransactionHolderTests.unittest_table_name)
+            trans.commit()
         
+        number = self._conn.execute("select number from %s" % DataTransactionHolderTests.unittest_table_name).fetchone()[0]
+        assert(number == 1)
+    
+    def test_transaction_holder_no_auto_rollback(self):
+        with self.di.create_transaction() as trans:
+            trans.execute("update %s set number = number + 1" % DataTransactionHolderTests.unittest_table_name)
+        
+        number = self._conn.execute("select number from %s" % DataTransactionHolderTests.unittest_table_name).fetchone()[0]
+        assert(number == 0)
+    
+    def test_transaction_holder_no_manual_rollback(self):
+        with self.di.create_transaction() as trans:
+            trans.execute("update %s set number = number + 1" % DataTransactionHolderTests.unittest_table_name)
+            trans.rollback()
+        
+        number = self._conn.execute("select number from %s" % DataTransactionHolderTests.unittest_table_name).fetchone()[0]
+        assert(number == 0)
+
+    def tearDown(self):
+        self._conn.execute("drop table %s" % DataTransactionHolderTests.unittest_table_name)
+        self._conn.close()
