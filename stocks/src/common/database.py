@@ -5,35 +5,38 @@ import pandas as pd
 class DatabaseInterface(object):
 
     def __init__(self, connector):
-        self.connector = connector
-        self.engine = self.connector.create_engine()
-        self.engine.echo = True
+        self._connector = connector
+        self._engine = self._connector.create_engine()
+        self._engine.echo = True
+        
+    def create_connection(self):
+        return DatabaseConnectionHolder(self._engine.connect())
     
     def select(self):
         pass
     
     def select_dataframe(self, sql):
-        return pd.read_sql_query(sql, self.engine)
+        return pd.read_sql_query(sql, self._engine)
     
     def insert_dataframe(self, dataframe, table_name):
-        metadata = TableMetadata.get(self.engine, table_name)
+        metadata = TableMetadata.get(self._engine, table_name)
         if metadata.identity_column != None:
             dataframe.drop(metadata.identity_column, axis=1, inplace=True)
-        dataframe.to_sql(metadata.table_name, self.engine, if_exists = 'append', index = False)
+        dataframe.to_sql(metadata.table_name, self._engine, if_exists = 'append', index = False)
     
     '''
     Merge data frame into table. staging_table_name must be provided as data frame to_sql does not yet support reusing connection
     '''
-    def merge_dataframe(self, dataframe, table_name, match_columns, staging_table_name=None):
+    def merge_dataframe(self, dataframe, table_name, match_columns, staging_table_name=None, src_alias='src', dest_alias='dest', additional_columns = {}):
         if match_columns == None or len(match_columns) == 0:
             raise DatabaseInterfaceError("Match columns must be provided when merging data frame")
         
         if staging_table_name == None:
             raise DatabaseInterfaceError("Staging table name must be provided when merging data frame")
                 
-        metadata = TableMetadata.get(self.engine, table_name)
+        metadata = TableMetadata.get(self._engine, table_name)
         try:
-            conn = self.engine.connect()
+            conn = self._engine.connect()
             if staging_table_name == None:
                 staging_table_name = '#' + table_name
                 conn.execute("select top 0 * into %s from %s" % (staging_table_name, metadata.full_table_name))
@@ -46,21 +49,24 @@ class DatabaseInterface(object):
             dataframe.to_sql(staging_table_name, conn.engine, if_exists = 'append', index = False)
             
             merge_sql = '''
-            MERGE INTO %s dest
-            USING %s src
+            MERGE INTO %s %s
+            USING %s %s
             ON %s
             WHEN MATCHED THEN
             UPDATE SET %s
             WHEN NOT MATCHED THEN
             INSERT (%s) VALUES (%s)
             ;'''
-            match_clause = ' AND '.join("dest.%s = src.%s" % (x, x) for x in match_columns)
-            update_clause = ', '.join('%s = src.%s' % (x, x) for x in metadata.non_identity_columns if x not in match_columns)
-            insert_columns = ', '.join(x for x in metadata.non_identity_columns)
-            insert_values = ', '.join('src.%s' % x for x in metadata.non_identity_columns)
-            sql = merge_sql % (metadata.table_name, staging_table_name, match_clause,update_clause, insert_columns, insert_values)
-            result = conn.execute(sql)
-            print(result.rowcount)
+            match_clause = ' AND '.join("%s.%s = %s.%s" % (src_alias, x, dest_alias, x) for x in match_columns)
+            update_clause = ', '.join('%s = %s.%s' % (x, src_alias, x) for x in metadata.non_identity_columns if x not in match_columns) \
+                + ''.join(", %s = %s" % (k, v) for k, v in additional_columns.iteritems())
+            insert_columns = ', '.join(x for x in metadata.non_identity_columns) \
+                + ''.join(", %s" % k for k in additional_columns.keys())
+            insert_values = ', '.join('%s.%s' % (src_alias, x) for x in metadata.non_identity_columns) \
+                + ''.join(", %s" % v for v in additional_columns.values())
+            sql = merge_sql % (metadata.table_name, dest_alias, staging_table_name, src_alias, match_clause,update_clause, insert_columns, insert_values)
+            print(sql)
+            conn.execute(sql)
         finally:
             if conn != None:
                 conn.execute("delete from %s" % staging_table_name)
@@ -68,7 +74,7 @@ class DatabaseInterface(object):
     
     def execute(self, sql):
         try:
-            conn = self.engine.connect()
+            conn = self._engine.connect()
             return conn.execute(sql)
         finally:
             if conn != None:
@@ -82,6 +88,22 @@ class DatabaseConnector(object):
         engine = create_engine(cls.connection_string)
         return engine
 
+class DatabaseConnectionHolder(object):
+    
+    def __init__(self, conn):
+        self._conn = conn
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, type_, value, traceback):
+        if self._conn != None:
+            self._conn.close()
+            
+    def execute(self, sql):
+        return self._conn.execute(sql)
+
+
 class MSSQLDatabaseConnector(DatabaseConnector):
     
     connection_string = "mssql+pyodbc://localhost\\SQLEXPRESS/shipping?driver=ODBC+Driver+11+for+SQL+Server"
@@ -92,7 +114,7 @@ class TableMetadata(object):
     cached = {}
 
     def __init__(self, engine, table_name, database = None, owner = 'dbo'):
-        self.engine = engine
+        self._engine = engine
         self.database = database
         self.owner = owner
         self.table_name = table_name
@@ -131,7 +153,7 @@ class TableMetadata(object):
         if self.owner != None:
             sql = sql + " and TABLE_SCHEMA = '%s'" % self.owner
                 
-        df = pd.read_sql_query(sql % self.table_name, self.engine, index_col=None)
+        df = pd.read_sql_query(sql % self.table_name, self._engine, index_col=None)
         
         databases = set(df.database.tolist())
         if len(databases) > 1:
@@ -174,3 +196,11 @@ class DatabaseConnectionTests(unittest.TestCase):
         di = DatabaseInterface(MSSQLDatabaseConnector())
         df = di.select_dataframe("select * from ais_positions")
         di.merge_dataframe(df, "ais_positions" ,["imo", "model_timestamp"], staging_table_name="ais_positions_staging")
+
+class DatabaseConnectionHolderTests(unittest.TestCase):
+    
+    def test_connection_holder(self):
+        di = DatabaseInterface(MSSQLDatabaseConnector())
+        with di.create_connection() as conn:
+            pass
+        
