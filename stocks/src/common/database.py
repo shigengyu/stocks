@@ -2,8 +2,12 @@ from sqlalchemy.engine import create_engine
 import unittest
 import pandas as pd
 import datetime
+import abc
+from _pyio import __metaclass__
 
 class DatabaseInterface(object):
+    
+    __metaclass__ = abc.ABCMeta
 
     def __init__(self, connector):
         self._connector = connector
@@ -80,6 +84,7 @@ class DatabaseInterface(object):
             del dataframe[column]
         dataframe.to_sql(metadata.table_name, self._engine, if_exists = 'append', index = False)
     
+    @abc.abstractmethod
     def merge_dataframe(self, dataframe, table_name, match_columns=[], exclude_columns = [], additional_columns = {}, src_alias='src', dest_alias='dest'):
         """
         Merges a pandas DataFrame into a database table
@@ -108,6 +113,37 @@ class DatabaseInterface(object):
         dest_alias : str, default 'dest'
             The alias of the merge target table
         """
+        pass
+    
+    def execute(self, sql):
+        """
+        Executes a SQL query
+        
+        Parameters
+        ----------
+        sql : str
+            The SQL to execute
+        
+        Returns
+        -------
+        result :
+            Result of the SQL execution
+        """
+        with self.create_connection() as conn:
+            result = conn.execute(sql)
+            return result
+        
+    @staticmethod
+    def _create_staging_table_name(table_name, persist_between_connections=False):
+        if persist_between_connections:
+            prefix = '##'
+        else:
+            prefix = '#'
+        return prefix + table_name + '_' + datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+
+class MSSQLDatabaseInterface(DatabaseInterface):
+    
+    def merge_dataframe(self, dataframe, table_name, match_columns=[], exclude_columns = [], additional_columns = {}, src_alias='src', dest_alias='dest'):
         if match_columns == None or len(match_columns) == 0:
             raise DatabaseInterfaceError("Match columns must be provided if data frame does not have index")
                 
@@ -154,40 +190,22 @@ class DatabaseInterface(object):
             if conn is not None:
                 conn.execute("drop table " + staging_table_name)
                 conn.close()
-    
-    def execute(self, sql):
-        """
-        Executes a SQL query
-        
-        Parameters
-        ----------
-        sql : str
-            The SQL to execute
-        
-        Returns
-        -------
-        result :
-            Result of the SQL execution
-        """
-        with self.create_connection() as conn:
-            result = conn.execute(sql)
-            return result
-        
-    @staticmethod
-    def _create_staging_table_name(table_name, persist_between_connections=False):
-        if persist_between_connections:
-            prefix = '##'
-        else:
-            prefix = '#'
-        return prefix + table_name + '_' + datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
 
 class DatabaseConnector(object):
+
+    __metaclass__ = abc.ABCMeta
 
     @classmethod
     def create_engine(cls):
         engine = create_engine(cls.connection_string)
         return engine
+
+
+class MSSQLDatabaseConnector(DatabaseConnector):
+    
+    connection_string = "mssql+pyodbc://localhost\\SQLEXPRESS/shipping?driver=ODBC+Driver+11+for+SQL+Server"
+
 
 class DatabaseConnectionHolder(object):
     
@@ -250,16 +268,29 @@ class DatabaseTransactionHolder(DatabaseConnectionHolder):
             self.is_rolled_back = True
 
 
-class MSSQLDatabaseConnector(DatabaseConnector):
-    
-    connection_string = "mssql+pyodbc://localhost\\SQLEXPRESS/shipping?driver=ODBC+Driver+11+for+SQL+Server"
-
-
 class TableMetadata(object):
     
     cached = {}
 
     def __init__(self, engine, table_name, database = None, owner = 'dbo'):
+        """
+        Initializes this TableMetadata instance
+        
+        Parameters
+        ----------
+        engine :
+            The SQLAlchemy engine
+        
+        table_name : str
+            The name of the table
+        
+        database : str, default None
+            The name of the database
+        
+        owner : str, default 'dbo'
+            The owner of the table
+        
+        """
         self._engine = engine
         self.database = database
         self.owner = owner
@@ -272,19 +303,40 @@ class TableMetadata(object):
     
     @staticmethod
     def get(engine, table_name):
+        """
+        Caches and returns the metadata of a table
+        
+        Parameters
+        ----------
+        table_name : str
+            The database table name, in one of the following formats:
+                <database>.<owner>.<table name>
+                <owner>.<table name>
+                <table name>
+        
+        Returns
+        -------
+        metadata : TableMetadata
+            The metadata of the table
+        
+        Raises
+        ------
+        DatabaseTableMetadataError : Error occured when retrieving database metadata
+        
+        """
         metadata = TableMetadata.cached.get(table_name)
         if metadata is not None:
             return metadata
         
         elements = table_name.split('.')
         if len(elements) == 1:
-            return TableMetadata(engine, elements[0])
+            metadata = TableMetadata(engine, elements[0])
         elif len(elements) == 2:
-            return TableMetadata(engine, elements[1], owner = elements[0])
+            metadata = TableMetadata(engine, elements[1], owner = elements[0])
         elif len(elements) == 3:
-            return TableMetadata(engine, elements[2], database = elements[0], owner = elements[1])
-        else:
-            return None
+            metadata = TableMetadata(engine, elements[2], database = elements[0], owner = elements[1])
+        
+        return metadata
     
     def load_columns(self):
         sql = '''
@@ -333,7 +385,7 @@ class TableMetadataTests(unittest.TestCase):
 class DatabaseConnectionTests(unittest.TestCase):
     
     def setUp(self):
-        self.di = DatabaseInterface(MSSQLDatabaseConnector())
+        self.di = MSSQLDatabaseInterface(MSSQLDatabaseConnector())
     
     def test_select_dataframe(self):
         df = self.di.select_dataframe("select * from ais_positions")
@@ -352,7 +404,7 @@ class DatabaseConnectionTests(unittest.TestCase):
 class DatabaseConnectionHolderTests(unittest.TestCase):
     
     def test_connection_holder(self):
-        di = DatabaseInterface(MSSQLDatabaseConnector())
+        di = MSSQLDatabaseInterface(MSSQLDatabaseConnector())
         with di.create_connection() as conn:
             assert(conn is not None)
 
@@ -361,7 +413,7 @@ class DataTransactionHolderTests(unittest.TestCase):
     unittest_table_name = '##unittest_transaction'
 
     def setUp(self):
-        self.di = DatabaseInterface(MSSQLDatabaseConnector())
+        self.di = MSSQLDatabaseInterface(MSSQLDatabaseConnector())
         self._conn = self.di.create_connection().connect()
         self._conn.execute("create table %s ( number int )" % DataTransactionHolderTests.unittest_table_name)
         self._conn.execute("insert into %s values (0)" % DataTransactionHolderTests.unittest_table_name)
