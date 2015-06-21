@@ -10,10 +10,9 @@ class DatabaseInterface(object):
     
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, connector):
-        self._connector = connector
-        self._engine = self._connector.create_engine()
-        self._engine.echo = True
+    def __init__(self, engine):
+        self.__engine = engine
+        self.__engine.echo = True
         
     def create_connection(self):
         """
@@ -30,7 +29,7 @@ class DatabaseInterface(object):
         conn : DatabaseConnectionHolder
             The database connection holder
         """
-        conn = DatabaseConnectionHolder(self._engine)
+        conn = DatabaseConnectionHolder(self.__engine)
         return conn
     
     def create_transaction(self):
@@ -50,7 +49,7 @@ class DatabaseInterface(object):
         trans : DatabaseTransactionHolder
             The database transaction holder
         """
-        trans = DatabaseTransactionHolder(self._engine)
+        trans = DatabaseTransactionHolder(self.__engine)
         return trans
     
     def select_dataframe(self, sql):
@@ -66,7 +65,7 @@ class DatabaseInterface(object):
         -------
         df : DataFrame
         """
-        df = pd.read_sql_query(sql, self._engine)
+        df = pd.read_sql_query(sql, self.__engine)
         return df
     
     def insert_dataframe(self, dataframe, table_name, exclude_columns = [], create_table_if_not_exist=False):
@@ -88,7 +87,7 @@ class DatabaseInterface(object):
             Whether or not to create the database table if it does not exist
         """
         try:
-            metadata = TableMetadata.get(self._engine, table_name)
+            metadata = TableMetadata.get(self.__engine, table_name)
         except DatabaseTableMetadataError as e:
             if not create_table_if_not_exist:
                 raise e
@@ -97,7 +96,7 @@ class DatabaseInterface(object):
             del dataframe[metadata.identity_column]
         for column in exclude_columns:
             del dataframe[column]
-        dataframe.to_sql(metadata.table_name, self._engine, if_exists = 'append', index = False)
+        dataframe.to_sql(metadata.table_name, self.__engine, if_exists = 'append', index = False)
     
     @abc.abstractmethod
     def merge_dataframe(self, dataframe, table_name, match_columns=[], exclude_columns = [], additional_columns = {}, src_alias='src', dest_alias='dest'):
@@ -158,15 +157,19 @@ class DatabaseInterface(object):
 
 
 class MSSQLDatabaseInterface(DatabaseInterface):
-        
+    
+    def __init__(self, connector):
+        self.__engine = connector.create_engine()
+        super(MSSQLDatabaseInterface, self).__init__(self.__engine)
+    
     @override
     def merge_dataframe(self, dataframe, table_name, match_columns=[], exclude_columns = [], additional_columns = {}, src_alias='src', dest_alias='dest'):
         if match_columns == None or len(match_columns) == 0:
             raise DatabaseInterfaceError("Match columns must be provided if data frame does not have index")
                 
-        metadata = TableMetadata.get(self._engine, table_name)
+        metadata = TableMetadata.get(self.__engine, table_name)
         try:
-            conn = self._engine.connect()
+            conn = self.__engine.connect()
             staging_table_name = DatabaseInterface._create_staging_table_name(table_name, persist_between_connections=True)
             
             if metadata.identity_column is not None:
@@ -227,7 +230,7 @@ class MSSQLDatabaseConnector(DatabaseConnector):
 class DatabaseConnectionHolder(object):
     
     def __init__(self, engine):
-        self._engine = engine
+        self.__engine = engine
     
     def __enter__(self):
         return self.connect()
@@ -237,57 +240,74 @@ class DatabaseConnectionHolder(object):
 
     @property
     def connection(self):
-        return self._conn
+        return self.__conn
 
     def connect(self):
-        self._conn = self._engine.connect()
+        self.__conn = self.__engine.connect()
         print("Connection opened...")
         return self
         
     def close(self):
-        if self._conn is not None:
-            self._conn.close()
+        if self.__conn is not None:
+            self.__conn.close()
             print("Connection closed")
 
     def execute(self, sql):
-        if self._conn == None:
+        if self.__conn == None:
             raise DatabaseInterfaceError("Connection not established inside DatabaseConnectionHolder")
-        return self._conn.execute(sql)
+        return self.__conn.execute(sql)
 
 
-class DatabaseTransactionHolder(DatabaseConnectionHolder):
+class DatabaseTransactionHolder(object):
     
     def __init__(self, engine):
-        super(DatabaseTransactionHolder, self).__init__(engine)
-        self.is_committed = False
-        self.is_rolled_back = False
+        self.__engine = engine
+        self.__conn = None
+        self.__trans = None
+        self.__is_committed = False
+        self.__is_rolled_back = False
     
     def __enter__(self):
-        super(DatabaseTransactionHolder, self).__enter__()
-        self._trans = self._conn.begin()
-        return self
+        return self.begin()
     
     def __exit__(self, type_, value, traceback):
-        if not self.is_committed and not self.is_rolled_back:
-            self._trans.rollback()
+        if not self.__is_committed and not self.__is_rolled_back:
+            self.__trans.rollback()
             
-        super(DatabaseTransactionHolder, self).__exit__(type_, value, traceback)
+        if self.__conn is not None:
+            self.__conn.close()
+
+    def begin(self):
+        if self.__conn is None:
+            self.__conn = self.__engine.connect()
+            self.__trans = self.__conn.begin()
+        return self
 
     def commit(self):
-        if self.is_committed:
+        if self.__is_committed:
             raise DatabaseInterfaceError("Transaction as already committed")
-        if self.is_rolled_back:
+        if self.__is_rolled_back:
             raise DatabaseInterfaceError("Cannot commit transaction as already rolled back")
-        self._trans.commit()
-        self.is_committed = True
+        self.__trans.commit()
+        self.__is_committed = True
         
     def rollback(self):
-        if self.is_committed:
+        if self.__is_committed:
             raise DatabaseInterfaceError("Cannot rollback transaction as already committed")
-        if not self.is_rolled_back:
-            self._trans.rollback()
-            self.is_rolled_back = True
+        if not self.__is_rolled_back:
+            self.__trans.rollback()
+            self.__is_rolled_back = True
 
+    @property
+    def is_committed(self):
+        return self.__is_committed
+
+    @property
+    def is_rolled_back(self):
+        return self.__is_rolled_back
+            
+    def execute(self, sql):
+        return self.__conn.execute(sql)
 
 class TableMetadata(object):
     
@@ -312,7 +332,7 @@ class TableMetadata(object):
             The owner of the table
         
         """
-        self._engine = engine
+        self.__engine = engine
         self.database = database
         self.owner = owner
         self.table_name = table_name
@@ -372,7 +392,7 @@ class TableMetadata(object):
         if self.owner is not None:
             sql = sql + " and TABLE_SCHEMA = '%s'" % self.owner
                 
-        df = pd.read_sql_query(sql % self.table_name, self._engine, index_col=None)
+        df = pd.read_sql_query(sql % self.table_name, self.__engine, index_col=None)
         if len(df.index) == 0:
             raise DatabaseTableMetadataError("Failed to load metadata as table [%s] does not exist" % self.table_name)
         
@@ -436,23 +456,23 @@ class DataTransactionHolderTests(unittest.TestCase):
 
     def setUp(self):
         self.di = MSSQLDatabaseInterface(MSSQLDatabaseConnector())
-        self._conn = self.di.create_connection().connect()
-        self._conn.execute("create table %s ( number int )" % DataTransactionHolderTests.unittest_table_name)
-        self._conn.execute("insert into %s values (0)" % DataTransactionHolderTests.unittest_table_name)
+        self.__conn = self.di.create_connection().connect()
+        self.__conn.execute("create table %s ( number int )" % DataTransactionHolderTests.unittest_table_name)
+        self.__conn.execute("insert into %s values (0)" % DataTransactionHolderTests.unittest_table_name)
 
     def test_transaction_holder_commit(self):
         with self.di.create_transaction() as trans:
             trans.execute("update %s set number = number + 1"  % DataTransactionHolderTests.unittest_table_name)
             trans.commit()
         
-        number = self._conn.execute("select number from %s" % DataTransactionHolderTests.unittest_table_name).fetchone()[0]
+        number = self.__conn.execute("select number from %s" % DataTransactionHolderTests.unittest_table_name).fetchone()[0]
         assert(number == 1)
     
     def test_transaction_holder_no_auto_rollback(self):
         with self.di.create_transaction() as trans:
             trans.execute("update %s set number = number + 1" % DataTransactionHolderTests.unittest_table_name)
         
-        number = self._conn.execute("select number from %s" % DataTransactionHolderTests.unittest_table_name).fetchone()[0]
+        number = self.__conn.execute("select number from %s" % DataTransactionHolderTests.unittest_table_name).fetchone()[0]
         assert(number == 0)
     
     def test_transaction_holder_no_manual_rollback(self):
@@ -460,9 +480,9 @@ class DataTransactionHolderTests(unittest.TestCase):
             trans.execute("update %s set number = number + 1" % DataTransactionHolderTests.unittest_table_name)
             trans.rollback()
         
-        number = self._conn.execute("select number from %s" % DataTransactionHolderTests.unittest_table_name).fetchone()[0]
+        number = self.__conn.execute("select number from %s" % DataTransactionHolderTests.unittest_table_name).fetchone()[0]
         assert(number == 0)
 
     def tearDown(self):
-        self._conn.execute("drop table %s" % DataTransactionHolderTests.unittest_table_name)
-        self._conn.close()
+        self.__conn.execute("drop table %s" % DataTransactionHolderTests.unittest_table_name)
+        self.__conn.close()
