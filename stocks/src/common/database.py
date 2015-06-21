@@ -305,8 +305,10 @@ class DatabaseTransactionHolder(object):
     @property
     def is_rolled_back(self):
         return self.__is_rolled_back
-            
+
     def execute(self, sql):
+        if self.__is_committed or self.__is_rolled_back:
+            raise DatabaseInterfaceError("Cannot execute SQL as transaction already committed / rolled back")
         return self.__conn.execute(sql)
 
 class TableMetadata(object):
