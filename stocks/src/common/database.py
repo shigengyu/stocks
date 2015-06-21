@@ -270,7 +270,7 @@ class DatabaseTransactionHolder(DatabaseConnectionHolder):
 
 class TableMetadata(object):
     
-    cached = {}
+    _cached = {}
 
     def __init__(self, engine, table_name, database = None, owner = 'dbo'):
         """
@@ -296,10 +296,10 @@ class TableMetadata(object):
         self.owner = owner
         self.table_name = table_name
         
-        self.load_columns()
+        self._load_columns()
         
-        TableMetadata.cached[table_name] = self
-        TableMetadata.cached[self.full_table_name] = self
+        TableMetadata._cached[table_name] = self
+        TableMetadata._cached[self.full_table_name] = self
     
     @staticmethod
     def get(engine, table_name):
@@ -324,7 +324,7 @@ class TableMetadata(object):
         DatabaseTableMetadataError : Error occured when retrieving database metadata
         
         """
-        metadata = TableMetadata.cached.get(table_name)
+        metadata = TableMetadata._cached.get(table_name)
         if metadata is not None:
             return metadata
         
@@ -338,7 +338,7 @@ class TableMetadata(object):
         
         return metadata
     
-    def load_columns(self):
+    def _load_columns(self):
         sql = '''
         select TABLE_CATALOG AS 'database', TABLE_SCHEMA AS 'owner', TABLE_NAME as 'table_name', COLUMN_NAME as 'column_name', COLUMNPROPERTY(object_id(TABLE_NAME), COLUMN_NAME, 'IsIdentity') AS 'is_identity'
         from INFORMATION_SCHEMA.COLUMNS
@@ -378,9 +378,9 @@ class TableMetadataTests(unittest.TestCase):
     
     def test_get_identity_column(self):
         metadata = TableMetadata(MSSQLDatabaseConnector.create_engine(), 'ais_positions')
-        print(metadata.full_table_name)
-        print(metadata.identity_column)
-        print(metadata.non_identity_columns)
+        assert(metadata.full_table_name == 'shipping.dbo.ais_positions')
+        assert(metadata.identity_column == 'ais_position_id')
+        assert(len(metadata.non_identity_columns) > 0)
 
 class DatabaseConnectionTests(unittest.TestCase):
     
