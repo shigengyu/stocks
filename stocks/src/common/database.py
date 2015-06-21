@@ -25,6 +25,12 @@ class DatabaseInterface(object):
     Merge data frame into table. staging_table_name must be provided as data frame to_sql does not yet support reusing connection
     '''
     def merge_dataframe(self, dataframe, table_name, match_columns, staging_table_name=None):
+        if match_columns == None or len(match_columns) == 0:
+            raise DatabaseInterfaceError("Match columns must be provided when merging data frame")
+        
+        if staging_table_name == None:
+            raise DatabaseInterfaceError("Staging table name must be provided when merging data frame")
+                
         metadata = TableMetadata.get(self.engine, table_name)
         try:
             conn = self.engine.connect()
@@ -127,6 +133,10 @@ class TableMetadata(object):
                 
         df = pd.read_sql_query(sql % self.table_name, self.engine, index_col=None)
         
+        databases = set(df.database.tolist())
+        if len(databases) > 1:
+            raise DatabaseInterfaceError("Table %s exists in multiple databases (%s)" % (self.table_name, ', '.join(databases)))
+        
         self.full_table_name = "%s.%s.%s" % (df.database[0], df.owner[0], df.table_name[0])
         df_identity_columns = df[df.is_identity == 1]
         self.non_identity_columns = df[df.is_identity == 0].column_name.tolist()
@@ -136,7 +146,11 @@ class TableMetadata(object):
             self.identity_column = None
     
 
-class TestTableMetadata(unittest.TestCase):
+class DatabaseInterfaceError(Exception):
+    pass    
+
+
+class TableMetadataTests(unittest.TestCase):
     
     def test_get_identity_column(self):
         metadata = TableMetadata(MSSQLDatabaseConnector.create_engine(), 'ais_positions')
@@ -144,7 +158,7 @@ class TestTableMetadata(unittest.TestCase):
         print(metadata.identity_column)
         print(metadata.non_identity_columns)
 
-class DatabaseConnectionTest(unittest.TestCase):
+class DatabaseConnectionTests(unittest.TestCase):
     
     def test_select_dataframe(self):
         di = DatabaseInterface(MSSQLDatabaseConnector())
