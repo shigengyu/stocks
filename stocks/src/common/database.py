@@ -4,6 +4,7 @@ import pandas as pd
 import datetime
 import abc
 from _pyio import __metaclass__
+from common import oo
 
 class DatabaseInterface(object):
     
@@ -141,8 +142,10 @@ class DatabaseInterface(object):
             prefix = '#'
         return prefix + table_name + '_' + datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
+
 class MSSQLDatabaseInterface(DatabaseInterface):
-    
+        
+    @oo.override
     def merge_dataframe(self, dataframe, table_name, match_columns=[], exclude_columns = [], additional_columns = {}, src_alias='src', dest_alias='dest'):
         if match_columns == None or len(match_columns) == 0:
             raise DatabaseInterfaceError("Match columns must be provided if data frame does not have index")
@@ -407,6 +410,7 @@ class DatabaseConnectionHolderTests(unittest.TestCase):
         di = MSSQLDatabaseInterface(MSSQLDatabaseConnector())
         with di.create_connection() as conn:
             assert(conn is not None)
+
 
 class DataTransactionHolderTests(unittest.TestCase):
 
