@@ -24,8 +24,8 @@ class DatabaseInterface(object):
     
     def insert_dataframe(self, dataframe, table_name):
         metadata = TableMetadata.get(self._engine, table_name)
-        if metadata.identity_column != None:
-            dataframe.drop(metadata.identity_column, axis=1, inplace=True)
+        if metadata.identity_column is not None:
+            del dataframe[metadata.identity_column]
         dataframe.to_sql(metadata.table_name, self._engine, if_exists = 'append', index = False)
     
     '''
@@ -38,12 +38,12 @@ class DatabaseInterface(object):
         metadata = TableMetadata.get(self._engine, table_name)
         try:
             conn = self._engine.connect()
-            staging_table_name = DatabaseInterface._create_staging_table_name(table_name)
+            staging_table_name = DatabaseInterface._create_staging_table_name(table_name, persist_between_connections=True)
             
-            if metadata.identity_column != None:
-                dataframe.drop(metadata.identity_column, axis=1, inplace=True)
+            if metadata.identity_column is not None:
+                del dataframe[metadata.identity_column]
             for column in exclude_columns:
-                dataframe.drop(column, axis=1, inplace=True)
+                del dataframe[column]
             dataframe.drop_duplicates(subset=match_columns, inplace=True)
             dataframe.to_sql(staging_table_name, conn.engine, index = False)    # current pandas version does not support reusing connection
             rowcount = conn.execute("select count(*) from %s" % staging_table_name).fetchone()[0]
@@ -59,18 +59,18 @@ class DatabaseInterface(object):
             INSERT (%s) VALUES (%s)
             ;'''
             match_clause = ' AND '.join("%s.%s = %s.%s" % (src_alias, x, dest_alias, x) for x in match_columns)
-            update_clause = ', '.join('%s = %s.%s' % (x, src_alias, x) for x in metadata.non_identity_columns if x not in match_columns) \
+            update_clause = ', '.join('%s = %s.%s' % (x, src_alias, x) for x in metadata.non_identity_columns if x not in match_columns and x not in exclude_columns) \
                 + ''.join(", %s = %s" % (k, v) for k, v in additional_columns.iteritems())
-            insert_columns = ', '.join(x for x in metadata.non_identity_columns) \
+            insert_columns = ', '.join(x for x in metadata.non_identity_columns if x not in exclude_columns) \
                 + ''.join(", %s" % k for k in additional_columns.keys())
-            insert_values = ', '.join('%s.%s' % (src_alias, x) for x in metadata.non_identity_columns) \
+            insert_values = ', '.join('%s.%s' % (src_alias, x) for x in metadata.non_identity_columns if x not in exclude_columns) \
                 + ''.join(", %s" % v for v in additional_columns.values())
             sql = merge_sql % (metadata.table_name, dest_alias, staging_table_name, src_alias, match_clause,update_clause, insert_columns, insert_values)
             merge_result = conn.execute(sql)
             print("Merged %d row(s) from %s into %s" % (merge_result.rowcount, table_name, staging_table_name))
             
         finally:
-            if conn != None:
+            if conn is not None:
                 conn.execute("drop table " + staging_table_name)
                 conn.close()
     
@@ -79,7 +79,7 @@ class DatabaseInterface(object):
             return conn.execute(sql)
         
     @staticmethod
-    def _create_staging_table_name(table_name, persist_between_connections=True):
+    def _create_staging_table_name(table_name, persist_between_connections=False):
         if persist_between_connections:
             prefix = '##'
         else:
@@ -111,7 +111,7 @@ class DatabaseConnectionHolder(object):
         return self
         
     def close(self):
-        if self._conn != None:
+        if self._conn is not None:
             self._conn.close()
             print("Connection closed")
 
@@ -178,7 +178,7 @@ class TableMetadata(object):
     @staticmethod
     def get(engine, table_name):
         metadata = TableMetadata.cached.get(table_name)
-        if metadata != None:
+        if metadata is not None:
             return metadata
         
         elements = table_name.split('.')
@@ -198,10 +198,10 @@ class TableMetadata(object):
         where TABLE_NAME = '%s'
         '''
         
-        if self.database != None:
+        if self.database is not None:
             sql = sql + " and TABLE_CATALOG = '%s'" % self.database
         
-        if self.owner != None:
+        if self.owner is not None:
             sql = sql + " and TABLE_SCHEMA = '%s'" % self.owner
                 
         df = pd.read_sql_query(sql % self.table_name, self._engine, index_col=None)
@@ -238,6 +238,7 @@ class DatabaseConnectionTests(unittest.TestCase):
     
     def test_select_dataframe(self):
         df = self.di.select_dataframe("select * from ais_positions")
+        assert(df is not None)
     
     def test_insert_dataframe(self):
         df = self.di.select_dataframe("select * from ais_positions")
@@ -246,7 +247,7 @@ class DatabaseConnectionTests(unittest.TestCase):
 
     def test_merge_dataframe(self):
         df = self.di.select_dataframe("select * from ais_positions")
-        self.di.merge_dataframe(df, "ais_positions" ,["imo", "model_timestamp"])
+        self.di.merge_dataframe(df, "ais_positions" ,["imo", "model_timestamp"], exclude_columns=['report_time'], additional_columns={'report_time': 'GETDATE()'})
 
 
 class DatabaseConnectionHolderTests(unittest.TestCase):
@@ -254,7 +255,7 @@ class DatabaseConnectionHolderTests(unittest.TestCase):
     def test_connection_holder(self):
         di = DatabaseInterface(MSSQLDatabaseConnector())
         with di.create_connection() as conn:
-            pass
+            assert(conn is not None)
 
 class DataTransactionHolderTests(unittest.TestCase):
 
