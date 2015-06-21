@@ -10,7 +10,7 @@ class DatabaseInterface(object):
         self._engine.echo = True
         
     def create_connection(self):
-        return DatabaseConnectionHolder(self._engine.connect())
+        return DatabaseConnectionHolder(self._engine)
     
     def select(self):
         pass
@@ -73,12 +73,8 @@ class DatabaseInterface(object):
                 conn.close()
     
     def execute(self, sql):
-        try:
-            conn = self._engine.connect()
+        with self.create_connection() as conn:
             return conn.execute(sql)
-        finally:
-            if conn != None:
-                conn.close()
 
 
 class DatabaseConnector(object):
@@ -90,10 +86,11 @@ class DatabaseConnector(object):
 
 class DatabaseConnectionHolder(object):
     
-    def __init__(self, conn):
-        self._conn = conn
+    def __init__(self, engine):
+        self._engine = engine
     
     def __enter__(self):
+        self._conn = self._engine.connect()
         return self
     
     def __exit__(self, type_, value, traceback):
@@ -101,6 +98,8 @@ class DatabaseConnectionHolder(object):
             self._conn.close()
             
     def execute(self, sql):
+        if self._conn == None:
+            raise DatabaseInterfaceError("Connection not established inside DatabaseConnectionHolder")
         return self._conn.execute(sql)
 
 
