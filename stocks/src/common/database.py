@@ -4,7 +4,7 @@ import pandas as pd
 import datetime
 import abc
 from _pyio import __metaclass__
-from common import oo
+from common.override import override
 
 class DatabaseInterface(object):
     
@@ -145,7 +145,7 @@ class DatabaseInterface(object):
 
 class MSSQLDatabaseInterface(DatabaseInterface):
         
-    @oo.override
+    @override
     def merge_dataframe(self, dataframe, table_name, match_columns=[], exclude_columns = [], additional_columns = {}, src_alias='src', dest_alias='dest'):
         if match_columns == None or len(match_columns) == 0:
             raise DatabaseInterfaceError("Match columns must be provided if data frame does not have index")
