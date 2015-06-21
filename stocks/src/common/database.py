@@ -17,7 +17,13 @@ class DatabaseInterface(object):
         
     def create_connection(self):
         """
-        Creates a database connection holder which wraps a transaction created from the SQLAlchemy engine        
+        Creates a database connection holder which wraps a connection created from the SQLAlchemy engine.
+        This is used when we need to reuse a database connection, e.g. when working with temporary tables. 
+        
+        Usage:
+            # replace 'database' with concrete DatabaseInterface sub-class instance
+            with database.create_connection as conn:
+                conn.execute("<sql>")
         
         Returns
         -------
@@ -29,7 +35,15 @@ class DatabaseInterface(object):
     
     def create_transaction(self):
         """
-        Creates a database transaction holder which wraps a transaction created from the SQLAlchemy engine
+        Creates a database transaction holder which wraps a transaction created from the SQLAlchemy engine.
+        This is used when we need to execute multiple SQL in the same transaction.
+        Not calling commit() will result in auto rollback when the transaction lifecycle ends.
+        
+        Usage:
+            # replace 'database' with concrete DatabaseInterface sub-class instance
+            with database.create_transaction as trans:
+                trans.execute("<sql>")
+                trans.commit()
         
         Returns
         -------
@@ -220,6 +234,10 @@ class DatabaseConnectionHolder(object):
     
     def __exit__(self, type_, value, traceback):
         self.close()
+
+    @property
+    def connection(self):
+        return self._conn
 
     def connect(self):
         self._conn = self._engine.connect()
